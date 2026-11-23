@@ -16,176 +16,126 @@
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 VERSION="2.2.3"
 
-set -- "$@" -- "$TIMEOUT" "$QUIET" "$PROTOCOL" "$HOST" "$PORT" "$result"
+
 TIMEOUT=15
 QUIET=0
-# The protocol to make the request with, either "tcp" or "http"
+HOST=""
+PORT=""
 PROTOCOL="tcp"
+COMMAND=""
 
 echoerr() {
-  if [ "$QUIET" -ne 1 ]; then printf "%s\n" "$*" 1>&2; fi
+  if [ "$QUIET" -ne 1 ]; then
+    echo "$@" >&2
+  fi
 }
 
 usage() {
-  exitcode="$1"
-  cat << USAGE >&2
-Usage:
-  $0 host:port|url [-t timeout] [-- command args]
-  -q | --quiet                        Do not output any status messages
-  -t TIMEOUT | --timeout=timeout      Timeout in seconds, zero for no timeout
-  -v | --version                      Show the version of this tool
-  -- COMMAND ARGS                     Execute command with args after the test finishes
-USAGE
-  exit "$exitcode"
+  echo "Usage: $0 [-q] [-t timeout] host:port|url [-- command args]" >&2
+  exit 1
 }
 
-wait_for() {
-  case "$PROTOCOL" in
-    tcp)
-      if ! command -v nc >/dev/null; then
-        echoerr 'nc command is missing!'
-        exit 1
-      fi
-      ;;
-    http)
-      if ! command -v wget >/dev/null; then
-        echoerr 'wget command is missing!'
-        exit 1
-      fi
-      ;;
-  esac
-
-  TIMEOUT_END=$(($(date +%s) + TIMEOUT))
-
-  while :; do
-    case "$PROTOCOL" in
-      tcp)
-        nc -w 1 -z "$HOST" "$PORT" > /dev/null 2>&1
-        ;;
-      http)
-        wget --timeout=1 -q "$HOST" -O /dev/null > /dev/null 2>&1
-        ;;
-      *)
-        echoerr "Unknown protocol '$PROTOCOL'"
-        exit 1
-        ;;
-    esac
-
-    result=$?
-
-    if [ $result -eq 0 ] ; then
-      if [ $# -gt 7 ] ; then
-        for result in $(seq $(($# - 7))); do
-          result=$1
-          shift
-          set -- "$@" "$result"
-        done
-
-        TIMEOUT=$2 QUIET=$3 PROTOCOL=$4 HOST=$5 PORT=$6 result=$7
-        shift 7
-        exec "$@"
-      fi
-      exit 0
-    fi
-
-    if [ $TIMEOUT -ne 0 -a $(date +%s) -ge $TIMEOUT_END ]; then
-      echo "Operation timed out" >&2
-      exit 1
-    fi
-
-    sleep 1
-  done
-}
-
-while :; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
-    http://*|https://*)
-    HOST="$1"
-    PROTOCOL="http"
-    shift 1
-    ;;
-    *:* )
-    HOST=$(printf "%s\n" "$1"| cut -d : -f 1)
-    PORT=$(printf "%s\n" "$1"| cut -d : -f 2)
-    shift 1
-    ;;
-    -v | --version)
-    echo $VERSION
-    exit
-    ;;
-    -q | --quiet)
-    QUIET=1
-    shift 1
-    ;;
-    -q-*)
-    QUIET=0
-    echoerr "Unknown option: $1"
-    usage 1
-    ;;
-    -q*)
-    QUIET=1
-    result=$1
-    shift 1
-    set -- -"${result#-q}" "$@"
-    ;;
-    -t | --timeout)
-    TIMEOUT="$2"
-    shift 2
-    ;;
+    -q|--quiet)
+      QUIET=1
+      shift
+      ;;
+    -t|--timeout)
+      if [ "$#" -lt 2 ]; then
+        usage
+      fi
+      TIMEOUT="$2"
+      shift 2
+      ;;
     -t*)
-    TIMEOUT="${1#-t}"
-    shift 1
-    ;;
+      TIMEOUT="${1#-t}"
+      shift
+      ;;
     --timeout=*)
-    TIMEOUT="${1#*=}"
-    shift 1
-    ;;
+      TIMEOUT="${1#*=}"
+      shift
+      ;;
     --)
-    shift
-    break
-    ;;
-    --help)
-    usage 0
-    ;;
-    -*)
-    QUIET=0
-    echoerr "Unknown option: $1"
-    usage 1
-    ;;
+      shift
+      COMMAND="$*"
+      break
+      ;;
+    http://*|https://*)
+      HOST="$1"
+      PROTOCOL="http"
+      shift
+      ;;
+    *:*)
+      HOST="${1%%:*}"
+      PORT="${1##*:}"
+      PROTOCOL="tcp"
+      shift
+      ;;
     *)
-    QUIET=0
-    echoerr "Unknown argument: $1"
-    usage 1
-    ;;
+      echoerr "Unknown argument: $1"
+      usage
+      ;;
   esac
 done
 
 if ! [ "$TIMEOUT" -ge 0 ] 2>/dev/null; then
-  echoerr "Error: invalid timeout '$TIMEOUT'"
-  usage 3
+  echoerr "Invalid timeout: $TIMEOUT"
+  exit 1
 fi
 
-case "$PROTOCOL" in
-  tcp)
-    if [ "$HOST" = "" ] || [ "$PORT" = "" ]; then
-      echoerr "Error: you need to provide a host and port to test."
-      usage 2
-    fi
-  ;;
-  http)
-    if [ "$HOST" = "" ]; then
-      echoerr "Error: you need to provide a host to test."
-      usage 2
-    fi
-  ;;
-esac
+if [ -z "$HOST" ]; then
+  echoerr "Host or URL is required"
+  usage
+fi
 
-wait_for "$@"
+if [ "$PROTOCOL" = "tcp" ] && [ -z "$PORT" ]; then
+  echoerr "Port is required"
+  usage
+fi
+
+if [ "$PROTOCOL" = "http" ]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echoerr "curl command is missing!"
+    exit 1
+  fi
+else
+  if ! command -v nc >/dev/null 2>&1; then
+    echoerr "nc command is missing!"
+    exit 1
+  fi
+fi
+
+START_TIME=$(date +%s)
+
+while :; do
+  if [ "$PROTOCOL" = "http" ]; then
+    curl --max-time 1 -fsS "$HOST" -o /dev/null >/dev/null 2>&1
+  else
+    nc -w 1 -z "$HOST" "$PORT" >/dev/null 2>&1
+  fi
+
+  if [ "$?" -eq 0 ]; then
+    echoerr "Host $HOST is active"
+
+    if [ -n "$COMMAND" ]; then
+      exec sh -c "$COMMAND"
+    fi
+
+    exit 0
+  fi
+
+  CURRENT_TIME=$(date +%s)
+  ELAPSED=$((CURRENT_TIME - START_TIME))
+
+  if [ "$TIMEOUT" -ne 0 ] && [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+    echoerr "Operation timed out: $HOST"
+    exit 1
+  fi
+
+  sleep 1
+done

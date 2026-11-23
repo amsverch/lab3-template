@@ -1,8 +1,7 @@
-version: "3"
 services:
   postgres:
     image: library/postgres:13
-    container_name: postgres
+    container_name: lab3-postgres
     restart: on-failure
     environment:
       POSTGRES_USER: postgres
@@ -12,9 +11,73 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./postgres/:/docker-entrypoint-initdb.d/
     ports:
-      - "5432:5432"
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
-# TODO добавить сервисы
+  flight:
+    build:
+      context: .
+      dockerfile: flight/Dockerfile
+    container_name: flight
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql://program:test@postgres:5432/flights
+    ports:
+      - "${FLIGHT_PORT:-8051}:8050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  ticket:
+    build:
+      context: .
+      dockerfile: ticket/Dockerfile
+    container_name: ticket
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql://program:test@postgres:5432/tickets
+    ports:
+      - "${TICKET_PORT:-8071}:8070"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  bonus:
+    build:
+      context: .
+      dockerfile: bonus/Dockerfile
+    container_name: bonus
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql://program:test@postgres:5432/privileges
+    ports:
+      - "${BONUS_PORT:-8052}:8050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    restart: on-failure
+    environment:
+      FLIGHT_SERVICE_URL: http://flight:8050
+      TICKET_SERVICE_URL: http://ticket:8070
+      BONUS_SERVICE_URL: http://bonus:8050
+    ports:
+      - "${GATEWAY_PORT:-8081}:8080"
+    depends_on:
+      - flight
+      - ticket
+      - bonus
 
 volumes:
   db-data:

@@ -10,13 +10,15 @@ path=$(dirname "$0")
 
 timed() {
   end=$(date +%s)
-  dt=$(("$end" - $1))
-  dd=$(("$dt" / 86400))
-  dt2=$(("$dt" - 86400 * "$dd"))
-  dh=$(("$dt2" / 3600))
-  dt3=$(("$dt2" - 3600 * "$dh"))
-  dm=$(("$dt3" / 60))
-  ds=$(("$dt3" - 60 * "$dm"))
+  start_time=$1
+
+  dt=$((end - start_time))
+  dd=$((dt / 86400))
+  dt2=$((dt - 86400 * dd))
+  dh=$((dt2 / 3600))
+  dt3=$((dt2 - 3600 * dh))
+  dm=$((dt3 / 60))
+  ds=$((dt3 - 60 * dm))
 
   LC_NUMERIC=C printf "\nTotal runtime: %02d min %02d seconds\n" "$dm" "$ds"
 }

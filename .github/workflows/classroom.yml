@@ -1,4 +1,5 @@
 name: GitHub Classroom Workflow
+
 on:
   push:
     branches:
@@ -6,18 +7,41 @@ on:
   pull_request:
     branches:
       - master
+
 jobs:
   build:
     name: Autograding
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Unit Tests
+        run: python -m pytest -v tests/
+
       - uses: docker/setup-buildx-action@v2
 
-      # TODO build and run unit tests
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Newman
+        run: npm install --global newman
 
       - name: Build images
         timeout-minutes: 10
@@ -30,25 +54,32 @@ jobs:
           ./scripts/wait-script.sh
         env:
           WAIT_PORTS: 8080,8070,8060,8050
-
-      # TODO setup variant, service and port
+          FLIGHT_PORT: 8060
+          TICKET_PORT: 8070
+          BONUS_PORT: 8050
+          GATEWAY_PORT: 8080
 
       - name: Run API Tests
         timeout-minutes: 5
         run: ./scripts/test-script.sh
         env:
-          VARIANT: <variant>
-          SERVICE_NAME: <your service name>
-          PORT_NUMBER: <port number>
+          VARIANT: v1
+          SERVICE_NAME: bonus
+          PORT_NUMBER: 8050
+          FLIGHT_PORT: 8060
+          TICKET_PORT: 8070
+          BONUS_PORT: 8050
+          GATEWAY_PORT: 8080
 
       - uses: education/autograding@v1
         id: autograder
         continue-on-error: true
 
       - name: Github auto grader mark
+        if: ${{ env.GOOGLE_API_KEY != '' }}
         uses: Romanow/google-sheet-autograder-marker@v1.0
         with:
-          google_token: ${{secrets.GOOGLE_API_KEY}}
+          google_token: ${{ secrets.GOOGLE_API_KEY }}
           sheet_id: "1xkgjUX6Qmk7rdJG-QPOToav-HWWtthJjnShIKnw3oIY"
           homework_number: 3
           user_column: 'D'
