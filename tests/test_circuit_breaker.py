@@ -86,8 +86,8 @@ class TestCircuitBreaker(unittest.TestCase):
             self.assertTrue(breaker.before_request())
             breaker.record_failure()
 
-        self.assertEqual(breaker.state, CircuitState.OPEN)
-        self.assertFalse(breaker.before_request())
+            self.assertEqual(breaker.state, CircuitState.OPEN)
+            self.assertFalse(breaker.before_request())
 
 
 if __name__ == "__main__":
