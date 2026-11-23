@@ -9,6 +9,11 @@ on:
     branches:
       - master
 
+permissions:
+  checks: write
+  actions: read
+  contents: read
+
 jobs:
   build:
     name: Autograding
